@@ -29,7 +29,7 @@ class CertRequest(BaseModel):
     endereco: str
 
 # --- Config ---
-CA_DIR = "ca"
+CA_DIR = "CA"
 OPENSSL_CNF = os.path.join(CA_DIR, "openssl_api.cnf")
 CHAIN_FILE = os.path.join(CA_DIR, "chain.crt")
 
@@ -153,3 +153,5 @@ def download(download_id: str, background_tasks: BackgroundTasks):
         media_type="application/x-pkcs12",
         filename="certificado.pfx"
     )
+
+
