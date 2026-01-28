@@ -1,5 +1,4 @@
 import os
-import shutil
 import subprocess
 import tempfile
 from datetime import datetime
@@ -9,16 +8,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, EmailStr
 
-app = FastAPI()
 
-# 🔧 Troque pelo seu domínio do GitHub Pages quando souber (ou deixe "*" só pra teste)
+# =========================================================
+# APP
+# =========================================================
+app = FastAPI(title="Aurora CA API")
+
+# ⚠️ Para teste deixe "*"
+# Em produção: ["https://seuusuario.github.io"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # depois troque por ["https://seuusuario.github.io"]
+    allow_origins=["https://israelzinho.github.io"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# =========================================================
+# MODELO DE ENTRADA (bate com seu formulário JS)
+# =========================================================
 class CertRequest(BaseModel):
     nome: str
     email: EmailStr
@@ -26,31 +33,67 @@ class CertRequest(BaseModel):
     cpf: str
     endereco: str
 
+
+# =========================================================
+# HEALTH CHECK
+# =========================================================
 @app.get("/health")
 def health():
-    return {"status": "ok", "time": datetime.utcnow().isoformat()}
+    return {
+        "status": "ok",
+        "time": datetime.utcnow().isoformat()
+    }
 
+
+# =========================================================
+# GERAR CERTIFICADO E DEVOLVER PFX
+# =========================================================
 @app.post("/generate")
-def generate_pfx(payload: CertRequest):
-    # ⚠️ Certificado de TESTE (autoassinado). Não tem validade jurídica.
-    # Gera tudo num diretório temporário e apaga depois.
+def generate_certificate(payload: CertRequest):
+    """
+    Gera:
+    - chave do cliente
+    - CSR
+    - certificado assinado pela AC intermediária
+    - PFX com cadeia
+    """
 
+    # Caminhos fixos da CA
+    CA_DIR = "ca"
+    OPENSSL_CNF = os.path.join(CA_DIR, "openssl_api.cnf")
+    CHAIN_FILE = os.path.join(CA_DIR, "chain.crt")
+
+    if not os.path.exists(OPENSSL_CNF):
+        raise HTTPException(status_code=500, detail="openssl_api.cnf não encontrado")
+
+    if not os.path.exists(CHAIN_FILE):
+        raise HTTPException(status_code=500, detail="chain.crt não encontrado")
+
+    # Diretório temporário por requisição
     with tempfile.TemporaryDirectory() as tmp:
-        key_path = os.path.join(tmp, "key.pem")
-        csr_path = os.path.join(tmp, "req.csr")
-        crt_path = os.path.join(tmp, "cert.pem")
-        pfx_path = os.path.join(tmp, "certificado.pfx")
+        key_path = os.path.join(tmp, "client.key")
+        csr_path = os.path.join(tmp, "client.csr")
+        crt_path = os.path.join(tmp, "client.crt")
+        pfx_path = os.path.join(tmp, "client.pfx")
 
-        # Subject simples (você pode ajustar)
-        # Evite caracteres muito estranhos aqui pra não quebrar o openssl
-        safe_nome = payload.nome.replace("/", "-").strip()
-        subj = f"/C=BR/ST=GO/L=Goiania/O=Aurora-Teste/OU=Dev/CN={safe_nome}/emailAddress={payload.email}"
+        # Sanitização básica (evita quebrar o openssl)
+        safe_nome = payload.nome.replace("/", "-").replace("\\", "-").strip()
 
-        # Senha do PFX (pra teste). Depois você pode pedir pro usuário.
-        pfx_pass = "1234"
+        # Subject do certificado do cliente
+        subj = (
+            f"/C=BR"
+            f"/O=Aurora"
+            f"/OU=Cliente"
+            f"/CN={safe_nome}"
+            f"/emailAddress={payload.email}"
+        )
+
+        # ⚠️ Senha do PFX (teste)
+        PFX_PASSWORD = "1234"
 
         try:
-            # 1) Gera chave privada
+            # -------------------------------------------------
+            # 1) Gerar chave privada do cliente
             subprocess.run(
                 ["openssl", "genrsa", "-out", key_path, "2048"],
                 check=True,
@@ -58,23 +101,38 @@ def generate_pfx(payload: CertRequest):
                 text=True,
             )
 
-            # 2) CSR
+            # -------------------------------------------------
+            # 2) Gerar CSR do cliente
             subprocess.run(
-                ["openssl", "req", "-new", "-key", key_path, "-out", csr_path, "-subj", subj],
+                [
+                    "openssl", "req",
+                    "-new",
+                    "-key", key_path,
+                    "-out", csr_path,
+                    "-subj", subj,
+                ],
                 check=True,
                 capture_output=True,
                 text=True,
             )
 
-            # 3) Cert autoassinado (teste)
+            # -------------------------------------------------
+            # 3) Assinar CSR com AC INTERMEDIÁRIA (modo CA)
             subprocess.run(
-                ["openssl", "x509", "-req", "-in", csr_path, "-signkey", key_path, "-out", crt_path, "-days", "365"],
+                [
+                    "openssl", "ca",
+                    "-config", OPENSSL_CNF,
+                    "-in", csr_path,
+                    "-out", crt_path,
+                    "-batch",
+                ],
                 check=True,
                 capture_output=True,
                 text=True,
             )
 
-            # 4) Empacota PFX
+            # -------------------------------------------------
+            # 4) Gerar PFX com cadeia
             subprocess.run(
                 [
                     "openssl", "pkcs12",
@@ -82,7 +140,8 @@ def generate_pfx(payload: CertRequest):
                     "-out", pfx_path,
                     "-inkey", key_path,
                     "-in", crt_path,
-                    "-passout", f"pass:{pfx_pass}",
+                    "-certfile", CHAIN_FILE,
+                    "-passout", f"pass:{PFX_PASSWORD}",
                 ],
                 check=True,
                 capture_output=True,
@@ -90,14 +149,16 @@ def generate_pfx(payload: CertRequest):
             )
 
         except subprocess.CalledProcessError as e:
-            # Dá um erro mais amigável
-            err = (e.stderr or e.stdout or "").strip()
-            raise HTTPException(status_code=500, detail=f"OpenSSL falhou: {err[:400]}")
+            error_msg = (e.stderr or e.stdout or "Erro desconhecido").strip()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Erro no OpenSSL: {error_msg[:500]}"
+            )
 
-        # Devolve o arquivo
+        # -----------------------------------------------------
+        # Devolver o PFX
         return FileResponse(
-            pfx_path,
+            path=pfx_path,
             media_type="application/x-pkcs12",
             filename="certificado.pfx",
         )
-
