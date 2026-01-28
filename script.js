@@ -76,35 +76,48 @@ function initValidationForm() {
       return;
     }
     
-    // Show loading state
-    setLoading(true);
-    
-    try {
-      // TODO: Substituir pela URL da sua API real
-      // const response = await fetch('https://sua-api.com/validar', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(formData)
-      // });
-      // 
-      // if (!response.ok) {
-      //   throw new Error('Erro ao enviar dados');
-      // }
-      
-      // Simulando chamada de API (remova em produção)
-      await simulateAPICall();
-      
-      // Show success
-      formCard.style.display = 'none';
-      successCard.style.display = 'block';
-      
-    } catch (error) {
-      alert('Ocorreu um erro ao enviar seus dados. Tente novamente.');
-      console.error('Error:', error);
-    } finally {
-      setLoading(false);
+// Show loading state
+setLoading(true);
+
+try {
+  const response = await fetch(
+    "https://aurora-production-de38.up.railway.app/generate",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(formData)
     }
-  });
+  );
+
+  if (!response.ok) {
+    throw new Error("Erro ao gerar certificado");
+  }
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "certificado.pfx";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  window.URL.revokeObjectURL(url);
+
+  // Show success
+  formCard.style.display = 'none';
+  successCard.style.display = 'block';
+
+} catch (error) {
+  alert('Ocorreu um erro ao gerar o certificado. Tente novamente.');
+  console.error('Error:', error);
+} finally {
+  setLoading(false);
+}
+
   
   function setLoading(loading) {
     if (loading) {
