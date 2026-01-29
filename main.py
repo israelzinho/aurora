@@ -29,9 +29,15 @@ class CertRequest(BaseModel):
     endereco: str
 
 # --- Config ---
-CA_DIR = "CA"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+CA_DIR = os.path.join(BASE_DIR, "CA")  # <-- sua pasta real (CA)
+
 OPENSSL_CNF = os.path.join(CA_DIR, "openssl_api.cnf")
-CHAIN_FILE = os.path.join(CA_DIR, "chain.crt")
+
+# usa o intermediário como "chain"
+CHAIN_FILE = os.path.join(CA_DIR, "intermediate", "certs", "aurora-int.crt")
+
 
 # Onde guardar PFX temporário (no container)
 PFX_STORE_DIR = "/tmp/pfx_store"
@@ -61,50 +67,66 @@ def _cleanup_expired():
         STORE.pop(k, None)
 
 def _generate_pfx(payload: CertRequest) -> str:
+    print("CWD:", os.getcwd())
+    print("OPENSSL_CNF:", OPENSSL_CNF, "exists?", os.path.exists(OPENSSL_CNF))
+    print("CHAIN_FILE:", CHAIN_FILE, "exists?", os.path.exists(CHAIN_FILE))
+
     if not os.path.exists(OPENSSL_CNF):
         raise HTTPException(500, "openssl_api.cnf não encontrado")
     if not os.path.exists(CHAIN_FILE):
         raise HTTPException(500, "chain.crt não encontrado")
+
 
     safe_nome = payload.nome.replace("/", "-").replace("\\", "-").strip()
     subj = f"/C=BR/O=Aurora/OU=Cliente/CN={safe_nome}/emailAddress={payload.email}"
 
     # senha do pfx (teste)
     pfx_pass = "1234"
+with tempfile.TemporaryDirectory() as tmp:
+    key_path = os.path.join(tmp, "client.key")
+    csr_path = os.path.join(tmp, "client.csr")
+    crt_path = os.path.join(tmp, "client.crt")
 
-    with tempfile.TemporaryDirectory() as tmp:
-        key_path = os.path.join(tmp, "client.key")
-        csr_path = os.path.join(tmp, "client.csr")
-        crt_path = os.path.join(tmp, "client.crt")
+    # 1) chave
+    subprocess.run(
+        ["openssl", "genrsa", "-out", key_path, "2048"],
+        check=True, capture_output=True, text=True
+    )
 
-        # 1) chave
-        subprocess.run(["openssl", "genrsa", "-out", key_path, "2048"],
-                       check=True, capture_output=True, text=True)
+    # 2) csr
+    subprocess.run(
+        ["openssl", "req", "-new", "-key", key_path, "-out", csr_path, "-subj", subj],
+        check=True, capture_output=True, text=True
+    )
 
-        # 2) csr
-        subprocess.run(["openssl", "req", "-new", "-key", key_path, "-out", csr_path, "-subj", subj],
-                       check=True, capture_output=True, text=True)
+    # 3) assina com CA intermediária (modo CA) — PROTEGER COM LOCK
+    # IMPORTANTÍSSIMO: usar cwd=CA_DIR para o openssl ca encontrar index.txt/newcerts/etc
+    with CA_LOCK:
+        subprocess.run(
+            ["openssl", "ca", "-config", OPENSSL_CNF, "-in", csr_path, "-out", crt_path, "-batch"],
+            check=True, capture_output=True, text=True,
+            cwd=CA_DIR
+        )
 
-        # 3) assina com CA intermediária (modo CA) — PROTEGER COM LOCK
-        with CA_LOCK:
-            subprocess.run(["openssl", "ca", "-config", OPENSSL_CNF, "-in", csr_path, "-out", crt_path, "-batch"],
-                           check=True, capture_output=True, text=True)
+    # 4) exporta pfx para pasta persistente temporária
+    os.makedirs(PFX_STORE_DIR, exist_ok=True)
 
-        # 4) exporta pfx para pasta persistente temporária
-        download_id = uuid.uuid4().hex
-        pfx_path = os.path.join(PFX_STORE_DIR, f"{download_id}.pfx")
+    download_id = uuid.uuid4().hex
+    pfx_path = os.path.join(PFX_STORE_DIR, f"{download_id}.pfx")
 
-        subprocess.run([
+    subprocess.run(
+        [
             "openssl", "pkcs12", "-export",
             "-out", pfx_path,
             "-inkey", key_path,
             "-in", crt_path,
             "-certfile", CHAIN_FILE,
             "-passout", f"pass:{pfx_pass}"
-        ], check=True, capture_output=True, text=True)
+        ],
+        check=True, capture_output=True, text=True
+    )
 
-        return pfx_path
-
+    return pfx_path
 @app.post("/validate")
 def validate_and_store(payload: CertRequest):
     # limpa expirados a cada chamada (simples)
@@ -153,5 +175,6 @@ def download(download_id: str, background_tasks: BackgroundTasks):
         media_type="application/x-pkcs12",
         filename="certificado.pfx"
     )
+
 
 
