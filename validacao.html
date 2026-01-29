@@ -89,9 +89,26 @@
             <polyline points="22 4 12 14.01 9 11.01"/>
           </svg>
         </div>
+
         <h2>Solicitação Enviada!</h2>
         <p>Seus dados foram enviados para validação. Em breve você receberá um e-mail com as próximas instruções.</p>
-        <a href="index.html" class="btn btn-primary">
+
+        <!-- Botão de download + área de erro (necessário para o script.js) -->
+        <button type="button" class="btn btn-hero btn-lg btn-full" id="downloadBtn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Baixar Certificado
+        </button>
+
+        <div id="downloadError" style="display:none; margin-top: 12px;" role="alert" aria-live="polite">
+          <span id="downloadErrorText"></span>
+        </div>
+
+        <a href="index.html" class="btn btn-primary" style="margin-top: 12px;">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="19" y1="12" x2="5" y2="12"/>
             <polyline points="12 19 5 12 12 5"/>
