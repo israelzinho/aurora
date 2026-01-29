@@ -119,11 +119,12 @@ with tempfile.TemporaryDirectory() as tmp:
     # 3) assina com CA intermediária (modo CA) — PROTEGER COM LOCK
     # IMPORTANTÍSSIMO: usar cwd=CA_DIR para o openssl ca encontrar index.txt/newcerts/etc
     with CA_LOCK:
-    subprocess.run(
-        ["openssl", "ca", "-config", OPENSSL_CNF, "-in", csr_path, "-out", crt_path, "-batch"],
-        check=True, capture_output=True, text=True,
-        cwd=CA_DIR
-    )
+        subprocess.run(
+            ["openssl", "ca", "-config", OPENSSL_CNF, "-in", csr_path, "-out", crt_path, "-batch"],
+            check=True, capture_output=True, text=True,
+            cwd=CA_DIR
+        )
+
 
     # 4) exporta pfx para pasta persistente temporária
     os.makedirs(PFX_STORE_DIR, exist_ok=True)
@@ -192,6 +193,7 @@ def download(download_id: str, background_tasks: BackgroundTasks):
         media_type="application/x-pkcs12",
         filename="certificado.pfx"
     )
+
 
 
 
