@@ -16,9 +16,11 @@ app = FastAPI(title="Aurora CA API")
 # CORS para seu GitHub Pages
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://israelzinho.github.io"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=[
+        "https://israelzinho.github.io",
+    ],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type"],
 )
 
 class CertRequest(BaseModel):
@@ -192,6 +194,7 @@ def download(download_id: str, background_tasks: BackgroundTasks):
         media_type="application/x-pkcs12",
         filename="certificado.pfx"
     )
+
 
 
 
