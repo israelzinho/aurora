@@ -34,21 +34,18 @@ class CertRequest(BaseModel):
 # --- Config ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+CA_DIR = os.path.join(BASE_DIR, "CA")
+OPENSSL_CNF = os.path.join(CA_DIR, "openssl_api.cnf")
+
 def pick_existing_file(*candidates: str):
     for p in candidates:
         if p and os.path.exists(p):
             return p
     return None
 
-OPENSSL_CNF = pick_existing_file(
-    os.path.join(BASE_DIR, "CA", "openssl_api.cnf"),
-    os.path.join(BASE_DIR, "aurora", "CA", "openssl_api.cnf"),
-    os.path.join(BASE_DIR, "CA", "openssl_api.cnf"),
-)
-
-CA_DIR = os.path.dirname(OPENSSL_CNF) if OPENSSL_CNF else BASE_DIR
-
+# chain: primeiro tenta chain.crt (se existir), senão usa o intermediário
 CHAIN_FILE = pick_existing_file(
+    os.path.join(CA_DIR, "chain.crt"),
     os.path.join(CA_DIR, "intermediate", "certs", "aurora-int.crt"),
     os.path.join(CA_DIR, "intermediate", "certs", "Aurora-INT.crt"),
 )
@@ -80,18 +77,18 @@ def _cleanup_expired():
 def _generate_pfx(payload: CertRequest) -> str:
     print("BASE_DIR:", BASE_DIR, flush=True)
     print("CWD:", os.getcwd(), flush=True)
-    print("OPENSSL_CNF:", OPENSSL_CNF, "exists?", os.path.exists(OPENSSL_CNF or ""), flush=True)
-    print("CA_DIR:", CA_DIR, "exists?", os.path.exists(CA_DIR or ""), flush=True)
+    print("OPENSSL_CNF:", OPENSSL_CNF, "exists?", os.path.exists(OPENSSL_CNF), flush=True)
+    print("CA_DIR:", CA_DIR, "exists?", os.path.exists(CA_DIR), flush=True)
     print("CHAIN_FILE:", CHAIN_FILE, "exists?", os.path.exists(CHAIN_FILE or ""), flush=True)
     print("BASE_DIR files:", os.listdir(BASE_DIR), flush=True)
 
-    if not OPENSSL_CNF or not os.path.exists(OPENSSL_CNF):
-        raise HTTPException(500, f"openssl_api.cnf não encontrado. Tentado={OPENSSL_CNF}")
+    if not os.path.exists(OPENSSL_CNF):
+        raise HTTPException(500, f"openssl_api.cnf não encontrado em {OPENSSL_CNF}")
 
     if not CHAIN_FILE or not os.path.exists(CHAIN_FILE):
         raise HTTPException(500, f"chain não encontrado. Tentado={CHAIN_FILE}")
 
-
+    # ... continua o resto da função aqui (gerar chave/csr/assinar/pfx)
 
 
     safe_nome = payload.nome.replace("/", "-").replace("\\", "-").strip()
@@ -192,6 +189,7 @@ def download(download_id: str, background_tasks: BackgroundTasks):
         media_type="application/x-pkcs12",
         filename="certificado.pfx"
     )
+
 
 
 
