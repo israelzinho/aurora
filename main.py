@@ -97,8 +97,9 @@ def _generate_pfx(payload: CertRequest) -> str:
     if not os.path.exists(OPENSSL_CNF):
         raise HTTPException(500, f"openssl_api.cnf não encontrado em {OPENSSL_CNF}")
 
-    if not CHAIN_FILE or not os.path.exists(CHAIN_FILE):
-        raise HTTPException(500, f"chain não encontrado. Tentado={CHAIN_FILE}")
+    if not OPENSSL_CNF or not os.path.exists(OPENSSL_CNF):
+        raise HTTPException(500, f"openssl_api.cnf não encontrado em {OPENSSL_CNF}")
+
 
     # ... continua o resto da função aqui (gerar chave/csr/assinar/pfx)
 
@@ -201,6 +202,7 @@ def download(download_id: str, background_tasks: BackgroundTasks):
         media_type="application/x-pkcs12",
         filename="certificado.pfx"
     )
+
 
 
 
