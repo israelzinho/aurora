@@ -30,29 +30,25 @@ class CertRequest(BaseModel):
     cpf: str
     endereco: str
 
+
 # --- Config ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-def pick_existing_file(*candidates: str) -> str | None:
+def pick_existing_file(*candidates: str):
     for p in candidates:
         if p and os.path.exists(p):
             return p
     return None
 
-# tenta achar o openssl_api.cnf em locais prováveis
 OPENSSL_CNF = pick_existing_file(
     os.path.join(BASE_DIR, "CA", "openssl_api.cnf"),
     os.path.join(BASE_DIR, "aurora", "CA", "openssl_api.cnf"),
-    os.path.join(BASE_DIR, "auroa", "CA", "openssl_api.cnf"),
-    os.path.join(BASE_DIR, "ca", "openssl_api.cnf"),
+    os.path.join(BASE_DIR, "CA", "openssl_api.cnf"),
 )
 
-# CA_DIR vira a pasta onde o cnf foi encontrado (ou um default)
 CA_DIR = os.path.dirname(OPENSSL_CNF) if OPENSSL_CNF else BASE_DIR
 
-# chain: usa intermediário (ou chain.crt se existir)
 CHAIN_FILE = pick_existing_file(
-    os.path.join(CA_DIR, "chain.crt"),
     os.path.join(CA_DIR, "intermediate", "certs", "aurora-int.crt"),
     os.path.join(CA_DIR, "intermediate", "certs", "Aurora-INT.crt"),
 )
@@ -84,21 +80,17 @@ def _cleanup_expired():
 def _generate_pfx(payload: CertRequest) -> str:
     print("BASE_DIR:", BASE_DIR, flush=True)
     print("CWD:", os.getcwd(), flush=True)
-    print("CA_DIR:", CA_DIR, "exists?", os.path.exists(CA_DIR or ""), flush=True)
     print("OPENSSL_CNF:", OPENSSL_CNF, "exists?", os.path.exists(OPENSSL_CNF or ""), flush=True)
+    print("CA_DIR:", CA_DIR, "exists?", os.path.exists(CA_DIR or ""), flush=True)
     print("CHAIN_FILE:", CHAIN_FILE, "exists?", os.path.exists(CHAIN_FILE or ""), flush=True)
+    print("BASE_DIR files:", os.listdir(BASE_DIR), flush=True)
 
     if not OPENSSL_CNF or not os.path.exists(OPENSSL_CNF):
-        raise HTTPException(
-            500,
-            f"openssl_api.cnf não encontrado. Tentado={OPENSSL_CNF} | BASE_DIR={BASE_DIR} | files={os.listdir(BASE_DIR)}"
-        )
+        raise HTTPException(500, f"openssl_api.cnf não encontrado. Tentado={OPENSSL_CNF}")
 
     if not CHAIN_FILE or not os.path.exists(CHAIN_FILE):
-        raise HTTPException(
-            500,
-            f"chain não encontrado. Tentado={CHAIN_FILE} | CA_DIR={CA_DIR}"
-        )
+        raise HTTPException(500, f"chain não encontrado. Tentado={CHAIN_FILE}")
+
 
 
 
@@ -112,45 +104,44 @@ with tempfile.TemporaryDirectory() as tmp:
     csr_path = os.path.join(tmp, "client.csr")
     crt_path = os.path.join(tmp, "client.crt")
 
-    # 1) chave
+# 1) chave
+subprocess.run(
+    ["openssl", "genrsa", "-out", key_path, "2048"],
+    check=True, capture_output=True, text=True
+)
+
+# 2) csr
+subprocess.run(
+    ["openssl", "req", "-new", "-key", key_path, "-out", csr_path, "-subj", subj],
+    check=True, capture_output=True, text=True
+)
+
+# 3) assina com CA intermediária (modo CA) — PROTEGER COM LOCK
+with CA_LOCK:
     subprocess.run(
-        ["openssl", "genrsa", "-out", key_path, "2048"],
-        check=True, capture_output=True, text=True
+        ["openssl", "ca", "-config", OPENSSL_CNF, "-in", csr_path, "-out", crt_path, "-batch"],
+        check=True, capture_output=True, text=True,
+        cwd=CA_DIR
     )
 
-    # 2) csr
-    subprocess.run(
-        ["openssl", "req", "-new", "-key", key_path, "-out", csr_path, "-subj", subj],
-        check=True, capture_output=True, text=True
-    )
+# 4) exporta pfx
+os.makedirs(PFX_STORE_DIR, exist_ok=True)
 
-    # 3) assina com CA intermediária (modo CA) — PROTEGER COM LOCK
-    # IMPORTANTÍSSIMO: usar cwd=CA_DIR para o openssl ca encontrar index.txt/newcerts/etc
-    with CA_LOCK:
-        subprocess.run(
-            ["openssl", "ca", "-config", OPENSSL_CNF, "-in", csr_path, "-out", crt_path, "-batch"],
-            check=True, capture_output=True, text=True,
-            cwd=CA_DIR
-        )
+download_id = uuid.uuid4().hex
+pfx_path = os.path.join(PFX_STORE_DIR, f"{download_id}.pfx")
 
+subprocess.run(
+    [
+        "openssl", "pkcs12", "-export",
+        "-out", pfx_path,
+        "-inkey", key_path,
+        "-in", crt_path,
+        "-certfile", CHAIN_FILE,
+        "-passout", f"pass:{pfx_pass}"
+    ],
+    check=True, capture_output=True, text=True
+)
 
-    # 4) exporta pfx para pasta persistente temporária
-    os.makedirs(PFX_STORE_DIR, exist_ok=True)
-
-    download_id = uuid.uuid4().hex
-    pfx_path = os.path.join(PFX_STORE_DIR, f"{download_id}.pfx")
-
-    subprocess.run(
-        [
-            "openssl", "pkcs12", "-export",
-            "-out", pfx_path,
-            "-inkey", key_path,
-            "-in", crt_path,
-            "-certfile", CHAIN_FILE,
-            "-passout", f"pass:{pfx_pass}"
-        ],
-        check=True, capture_output=True, text=True
-    )
 
     return pfx_path
 @app.post("/validate")
@@ -201,6 +192,7 @@ def download(download_id: str, background_tasks: BackgroundTasks):
         media_type="application/x-pkcs12",
         filename="certificado.pfx"
     )
+
 
 
 
