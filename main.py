@@ -31,13 +31,29 @@ class CertRequest(BaseModel):
 # --- Config ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-CA_DIR = os.path.join(BASE_DIR, "CA")  # <-- sua pasta real (CA)
+def pick_existing(*candidates: str) -> str | None:
+    for p in candidates:
+        if p and os.path.exists(p):
+            return p
+    return None
+
+# tenta achar a pasta da CA (ajuste os candidatos conforme sua estrutura real)
+CA_DIR = pick_existing(
+    os.path.join(BASE_DIR, "CA"),
+    os.path.join(BASE_DIR, "aurora", "CA"),
+)
+
+if not CA_DIR:
+    raise RuntimeError(f"Pasta da CA não encontrada. BASE_DIR={BASE_DIR} | files={os.listdir(BASE_DIR)}")
 
 OPENSSL_CNF = os.path.join(CA_DIR, "openssl_api.cnf")
 
-# usa o intermediário como "chain"
-CHAIN_FILE = os.path.join(CA_DIR, "intermediate", "certs", "aurora-int.crt")
-
+# usa o intermediário como "chain" (tenta nomes comuns)
+CHAIN_FILE = pick_existing(
+    os.path.join(CA_DIR, "chain.crt"),
+    os.path.join(CA_DIR, "intermediate", "certs", "aurora-int.crt"),
+    os.path.join(CA_DIR, "intermediate", "certs", "Aurora-INT.crt"),
+)
 
 # Onde guardar PFX temporário (no container)
 PFX_STORE_DIR = "/tmp/pfx_store"
@@ -49,6 +65,7 @@ TTL_SECONDS = 10 * 60  # 10 minutos
 
 # Lock para evitar corrida no openssl ca (index/serial)
 CA_LOCK = threading.Lock()
+
 
 @app.get("/health")
 def health():
@@ -102,11 +119,11 @@ with tempfile.TemporaryDirectory() as tmp:
     # 3) assina com CA intermediária (modo CA) — PROTEGER COM LOCK
     # IMPORTANTÍSSIMO: usar cwd=CA_DIR para o openssl ca encontrar index.txt/newcerts/etc
     with CA_LOCK:
-        subprocess.run(
-            ["openssl", "ca", "-config", OPENSSL_CNF, "-in", csr_path, "-out", crt_path, "-batch"],
-            check=True, capture_output=True, text=True,
-            cwd=CA_DIR
-        )
+    subprocess.run(
+        ["openssl", "ca", "-config", OPENSSL_CNF, "-in", csr_path, "-out", crt_path, "-batch"],
+        check=True, capture_output=True, text=True,
+        cwd=CA_DIR
+    )
 
     # 4) exporta pfx para pasta persistente temporária
     os.makedirs(PFX_STORE_DIR, exist_ok=True)
