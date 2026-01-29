@@ -33,39 +33,37 @@ class CertRequest(BaseModel):
 # --- Config ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-def pick_existing(*candidates: str) -> str | None:
+def pick_existing_file(*candidates: str) -> str | None:
     for p in candidates:
         if p and os.path.exists(p):
             return p
     return None
 
-# tenta achar a pasta da CA (ajuste os candidatos conforme sua estrutura real)
-CA_DIR = pick_existing(
-    os.path.join(BASE_DIR, "CA"),
-    os.path.join(BASE_DIR, "aurora", "CA"),
+OPENSSL_CNF = pick_existing_file(
+    os.path.join(BASE_DIR, "CA", "openssl_api.cnf"),
+    os.path.join(BASE_DIR, "aurora", "CA", "openssl_api.cnf"),
+    os.path.join(BASE_DIR, "auroa", "CA", "openssl_api.cnf"),
+    os.path.join(BASE_DIR, "ca", "openssl_api.cnf"),
 )
 
-if not CA_DIR:
-    raise RuntimeError(f"Pasta da CA não encontrada. BASE_DIR={BASE_DIR} | files={os.listdir(BASE_DIR)}")
+if not OPENSSL_CNF:
+    # deixa a API subir, mas com erro bem claro quando chamar /validate
+    OPENSSL_CNF = os.path.join(BASE_DIR, "CA", "openssl_api.cnf")
 
-OPENSSL_CNF = os.path.join(CA_DIR, "openssl_api.cnf")
+CA_DIR = os.path.dirname(OPENSSL_CNF)
 
-# usa o intermediário como "chain" (tenta nomes comuns)
-CHAIN_FILE = pick_existing(
+CHAIN_FILE = pick_existing_file(
     os.path.join(CA_DIR, "chain.crt"),
     os.path.join(CA_DIR, "intermediate", "certs", "aurora-int.crt"),
     os.path.join(CA_DIR, "intermediate", "certs", "Aurora-INT.crt"),
 )
 
-# Onde guardar PFX temporário (no container)
 PFX_STORE_DIR = "/tmp/pfx_store"
 os.makedirs(PFX_STORE_DIR, exist_ok=True)
 
-# “Banco” simples em memória: id -> {path, expires_at}
 STORE: dict[str, dict] = {}
 TTL_SECONDS = 10 * 60  # 10 minutos
 
-# Lock para evitar corrida no openssl ca (index/serial)
 CA_LOCK = threading.Lock()
 
 
@@ -194,6 +192,7 @@ def download(download_id: str, background_tasks: BackgroundTasks):
         media_type="application/x-pkcs12",
         filename="certificado.pfx"
     )
+
 
 
 
