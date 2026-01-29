@@ -82,14 +82,24 @@ def _cleanup_expired():
         STORE.pop(k, None)
 
 def _generate_pfx(payload: CertRequest) -> str:
-    print("CWD:", os.getcwd())
-    print("OPENSSL_CNF:", OPENSSL_CNF, "exists?", os.path.exists(OPENSSL_CNF))
-    print("CHAIN_FILE:", CHAIN_FILE, "exists?", os.path.exists(CHAIN_FILE))
+    print("BASE_DIR:", BASE_DIR, flush=True)
+    print("CWD:", os.getcwd(), flush=True)
+    print("CA_DIR:", CA_DIR, "exists?", os.path.exists(CA_DIR or ""), flush=True)
+    print("OPENSSL_CNF:", OPENSSL_CNF, "exists?", os.path.exists(OPENSSL_CNF or ""), flush=True)
+    print("CHAIN_FILE:", CHAIN_FILE, "exists?", os.path.exists(CHAIN_FILE or ""), flush=True)
 
-    if not os.path.exists(OPENSSL_CNF):
-        raise HTTPException(500, "openssl_api.cnf não encontrado")
-    if not os.path.exists(CHAIN_FILE):
-        raise HTTPException(500, "chain.crt não encontrado")
+    if not OPENSSL_CNF or not os.path.exists(OPENSSL_CNF):
+        raise HTTPException(
+            500,
+            f"openssl_api.cnf não encontrado. Tentado={OPENSSL_CNF} | BASE_DIR={BASE_DIR} | files={os.listdir(BASE_DIR)}"
+        )
+
+    if not CHAIN_FILE or not os.path.exists(CHAIN_FILE):
+        raise HTTPException(
+            500,
+            f"chain não encontrado. Tentado={CHAIN_FILE} | CA_DIR={CA_DIR}"
+        )
+
 
 
     safe_nome = payload.nome.replace("/", "-").replace("\\", "-").strip()
@@ -191,6 +201,7 @@ def download(download_id: str, background_tasks: BackgroundTasks):
         media_type="application/x-pkcs12",
         filename="certificado.pfx"
     )
+
 
 
 
