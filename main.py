@@ -60,7 +60,19 @@ CA_LOCK = threading.Lock()
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "time": datetime.utcnow().isoformat()}
+    return {
+        "status": "ok",
+        "time": datetime.utcnow().isoformat(),
+        "BASE_DIR": BASE_DIR,
+        "BASE_DIR_files": sorted(os.listdir(BASE_DIR)) if os.path.exists(BASE_DIR) else None,
+        "CA_DIR": CA_DIR,
+        "CA_DIR_exists": os.path.exists(CA_DIR),
+        "CA_DIR_files": sorted(os.listdir(CA_DIR)) if os.path.exists(CA_DIR) else None,
+        "OPENSSL_CNF": OPENSSL_CNF,
+        "OPENSSL_CNF_exists": os.path.exists(OPENSSL_CNF),
+        "CHAIN_FILE": CHAIN_FILE,
+        "CHAIN_FILE_exists": os.path.exists(CHAIN_FILE or ""),
+    }
 
 def _cleanup_expired():
     now = time.time()
@@ -189,6 +201,7 @@ def download(download_id: str, background_tasks: BackgroundTasks):
         media_type="application/x-pkcs12",
         filename="certificado.pfx"
     )
+
 
 
 
