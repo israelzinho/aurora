@@ -91,10 +91,10 @@
         </div>
 
         <h2>Solicitação Enviada!</h2>
-        <p>Seus dados foram enviados para validação. Em breve você receberá um e-mail com as próximas instruções.</p>
+        <p>Seus dados foram enviados para validação. Se o certificado já foi gerado, você pode baixar abaixo.</p>
 
-        <!-- Botão de download + área de erro (necessário para o script.js) -->
-        <button type="button" class="btn btn-hero btn-lg btn-full" id="downloadBtn">
+        <!-- BOTÃO DE DOWNLOAD (o seu script.js procura exatamente por esse id) -->
+        <button type="button" class="btn btn-accent btn-lg btn-full" id="downloadBtn" style="margin-top: 0.5rem;">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -104,11 +104,14 @@
           Baixar Certificado
         </button>
 
-        <div id="downloadError" style="display:none; margin-top: 12px;" role="alert" aria-live="polite">
-          <span id="downloadErrorText"></span>
+        <!-- ÁREA DE ERRO (o seu script.js usa esses ids) -->
+        <div id="downloadError"
+             style="display:none; margin-top: 1rem; padding: 0.75rem 1rem; border: 1px solid #dc2626; border-radius: 0.75rem; color: #dc2626; text-align:left;">
+          <strong>Falha no download:</strong>
+          <div id="downloadErrorText" style="margin-top: 0.25rem;"></div>
         </div>
 
-        <a href="index.html" class="btn btn-primary" style="margin-top: 12px;">
+        <a href="index.html" class="btn btn-primary btn-full" style="margin-top: 1rem;">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="19" y1="12" x2="5" y2="12"/>
             <polyline points="12 19 5 12 12 5"/>
