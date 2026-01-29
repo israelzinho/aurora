@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, EmailStr
 
-app = FastAPI(title="Aurora CA API")
+app = FastAPI(title="Aurora CA API - DEBUG", version="999")
 
 # CORS para seu GitHub Pages
 app.add_middleware(
@@ -202,6 +202,7 @@ def download(download_id: str, background_tasks: BackgroundTasks):
         media_type="application/x-pkcs12",
         filename="certificado.pfx"
     )
+
 
 
 
