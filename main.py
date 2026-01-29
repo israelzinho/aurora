@@ -94,63 +94,62 @@ def _generate_pfx(payload: CertRequest) -> str:
     print("CHAIN_FILE:", CHAIN_FILE, "exists?", os.path.exists(CHAIN_FILE or ""), flush=True)
     print("BASE_DIR files:", os.listdir(BASE_DIR), flush=True)
 
-    if not os.path.exists(OPENSSL_CNF):
-        raise HTTPException(500, f"openssl_api.cnf não encontrado em {OPENSSL_CNF}")
-
     if not OPENSSL_CNF or not os.path.exists(OPENSSL_CNF):
         raise HTTPException(500, f"openssl_api.cnf não encontrado em {OPENSSL_CNF}")
 
-
-    # ... continua o resto da função aqui (gerar chave/csr/assinar/pfx)
-
+    if not CHAIN_FILE or not os.path.exists(CHAIN_FILE):
+        raise HTTPException(500, "CHAIN_FILE não encontrado (chain.crt / aurora-int.crt).")
 
     safe_nome = payload.nome.replace("/", "-").replace("\\", "-").strip()
     subj = f"/C=BR/O=Aurora/OU=Cliente/CN={safe_nome}/emailAddress={payload.email}"
 
     # senha do pfx (teste)
     pfx_pass = "1234"
-with tempfile.TemporaryDirectory() as tmp:
-    key_path = os.path.join(tmp, "client.key")
-    csr_path = os.path.join(tmp, "client.csr")
-    crt_path = os.path.join(tmp, "client.crt")
 
-# 1) chave
-subprocess.run(
-    ["openssl", "genrsa", "-out", key_path, "2048"],
-    check=True, capture_output=True, text=True
-)
+    with tempfile.TemporaryDirectory() as tmp:
+        key_path = os.path.join(tmp, "client.key")
+        csr_path = os.path.join(tmp, "client.csr")
+        crt_path = os.path.join(tmp, "client.crt")
 
-# 2) csr
-subprocess.run(
-    ["openssl", "req", "-new", "-key", key_path, "-out", csr_path, "-subj", subj],
-    check=True, capture_output=True, text=True
-)
+        # 1) chave
+        subprocess.run(
+            ["openssl", "genrsa", "-out", key_path, "2048"],
+            check=True, capture_output=True, text=True
+        )
 
-# 3) assina com CA intermediária (modo CA) — PROTEGER COM LOCK
-with CA_LOCK:
-    subprocess.run(
-        ["openssl", "ca", "-config", OPENSSL_CNF, "-in", csr_path, "-out", crt_path, "-batch"],
-        check=True, capture_output=True, text=True,
-        cwd=CA_DIR
-    )
+        # 2) csr
+        subprocess.run(
+            ["openssl", "req", "-new", "-key", key_path, "-out", csr_path, "-subj", subj],
+            check=True, capture_output=True, text=True
+        )
 
-# 4) exporta pfx
-os.makedirs(PFX_STORE_DIR, exist_ok=True)
+        # 3) assina com CA intermediária — PROTEGER COM LOCK
+        with CA_LOCK:
+            subprocess.run(
+                ["openssl", "ca", "-config", OPENSSL_CNF, "-in", csr_path, "-out", crt_path, "-batch"],
+                check=True, capture_output=True, text=True,
+                cwd=CA_DIR
+            )
 
-download_id = uuid.uuid4().hex
-pfx_path = os.path.join(PFX_STORE_DIR, f"{download_id}.pfx")
+        # 4) exporta pfx (fora do tmp, pra persistir)
+        os.makedirs(PFX_STORE_DIR, exist_ok=True)
+        download_id = uuid.uuid4().hex
+        pfx_path = os.path.join(PFX_STORE_DIR, f"{download_id}.pfx")
 
-subprocess.run(
-    [
-        "openssl", "pkcs12", "-export",
-        "-out", pfx_path,
-        "-inkey", key_path,
-        "-in", crt_path,
-        "-certfile", CHAIN_FILE,
-        "-passout", f"pass:{pfx_pass}"
-    ],
-    check=True, capture_output=True, text=True
-)
+        subprocess.run(
+            [
+                "openssl", "pkcs12", "-export",
+                "-out", pfx_path,
+                "-inkey", key_path,
+                "-in", crt_path,
+                "-certfile", CHAIN_FILE,
+                "-passout", f"pass:{pfx_pass}"
+            ],
+            check=True, capture_output=True, text=True
+        )
+
+        return pfx_path
+
 
 
     return pfx_path
@@ -202,6 +201,7 @@ def download(download_id: str, background_tasks: BackgroundTasks):
         media_type="application/x-pkcs12",
         filename="certificado.pfx"
     )
+
 
 
 
