@@ -39,6 +39,7 @@ def pick_existing_file(*candidates: str) -> str | None:
             return p
     return None
 
+# tenta achar o openssl_api.cnf em locais prováveis
 OPENSSL_CNF = pick_existing_file(
     os.path.join(BASE_DIR, "CA", "openssl_api.cnf"),
     os.path.join(BASE_DIR, "aurora", "CA", "openssl_api.cnf"),
@@ -46,12 +47,10 @@ OPENSSL_CNF = pick_existing_file(
     os.path.join(BASE_DIR, "ca", "openssl_api.cnf"),
 )
 
-if not OPENSSL_CNF:
-    # deixa a API subir, mas com erro bem claro quando chamar /validate
-    OPENSSL_CNF = os.path.join(BASE_DIR, "CA", "openssl_api.cnf")
+# CA_DIR vira a pasta onde o cnf foi encontrado (ou um default)
+CA_DIR = os.path.dirname(OPENSSL_CNF) if OPENSSL_CNF else BASE_DIR
 
-CA_DIR = os.path.dirname(OPENSSL_CNF)
-
+# chain: usa intermediário (ou chain.crt se existir)
 CHAIN_FILE = pick_existing_file(
     os.path.join(CA_DIR, "chain.crt"),
     os.path.join(CA_DIR, "intermediate", "certs", "aurora-int.crt"),
@@ -62,8 +61,7 @@ PFX_STORE_DIR = "/tmp/pfx_store"
 os.makedirs(PFX_STORE_DIR, exist_ok=True)
 
 STORE: dict[str, dict] = {}
-TTL_SECONDS = 10 * 60  # 10 minutos
-
+TTL_SECONDS = 10 * 60
 CA_LOCK = threading.Lock()
 
 
@@ -193,6 +191,7 @@ def download(download_id: str, background_tasks: BackgroundTasks):
         media_type="application/x-pkcs12",
         filename="certificado.pfx"
     )
+
 
 
 
