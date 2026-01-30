@@ -100,6 +100,12 @@ def _generate_pfx(payload: CertRequest) -> str:
     if not CHAIN_FILE or not os.path.exists(CHAIN_FILE):
         raise HTTPException(500, "CHAIN_FILE não encontrado (chain.crt / aurora-int.crt).")
 
+    # ✅ checa a chave privada da intermediária no path esperado
+    INT_KEY = os.path.join(BASE_DIR, "CA", "intermediate", "private", "aurora-int.key")
+    print("INT_KEY:", INT_KEY, "exists?", os.path.exists(INT_KEY), flush=True)
+    if not os.path.exists(INT_KEY):
+        raise HTTPException(500, f"Chave da intermediária não encontrada: {INT_KEY}")
+
     safe_nome = payload.nome.replace("/", "-").replace("\\", "-").strip()
     subj = f"/C=BR/O=Aurora/OU=Cliente/CN={safe_nome}/emailAddress={payload.email}"
 
@@ -112,43 +118,57 @@ def _generate_pfx(payload: CertRequest) -> str:
         crt_path = os.path.join(tmp, "client.crt")
 
         # 1) chave
-        subprocess.run(
-            ["openssl", "genrsa", "-out", key_path, "2048"],
-            check=True, capture_output=True, text=True
-        )
+        try:
+            subprocess.run(
+                ["openssl", "genrsa", "-out", key_path, "2048"],
+                check=True, capture_output=True, text=True
+            )
+        except subprocess.CalledProcessError as e:
+            raise HTTPException(500, f"Erro no OpenSSL (genrsa): {e.stderr or e.stdout or str(e)}")
 
         # 2) csr
-        subprocess.run(
-            ["openssl", "req", "-new", "-key", key_path, "-out", csr_path, "-subj", subj],
-            check=True, capture_output=True, text=True
-        )
+        try:
+            subprocess.run(
+                ["openssl", "req", "-new", "-key", key_path, "-out", csr_path, "-subj", subj],
+                check=True, capture_output=True, text=True
+            )
+        except subprocess.CalledProcessError as e:
+            raise HTTPException(500, f"Erro no OpenSSL (req): {e.stderr or e.stdout or str(e)}")
 
         # 3) assina com CA intermediária — PROTEGER COM LOCK
+        # ✅ IMPORTANTE: cwd=BASE_DIR para que o "./CA/..." do openssl_api.cnf resolva para /app/CA/...
         with CA_LOCK:
-            subprocess.run(
-                ["openssl", "ca", "-config", OPENSSL_CNF, "-in", csr_path, "-out", crt_path, "-batch"],
-                check=True, capture_output=True, text=True,
-                cwd=CA_DIR
-            )
+            try:
+                subprocess.run(
+                    ["openssl", "ca", "-config", OPENSSL_CNF, "-in", csr_path, "-out", crt_path, "-batch"],
+                    check=True, capture_output=True, text=True,
+                    cwd=BASE_DIR
+                )
+            except subprocess.CalledProcessError as e:
+                raise HTTPException(500, f"Erro no OpenSSL (ca): {e.stderr or e.stdout or str(e)}")
 
         # 4) exporta pfx (fora do tmp, pra persistir)
         os.makedirs(PFX_STORE_DIR, exist_ok=True)
         download_id = uuid.uuid4().hex
         pfx_path = os.path.join(PFX_STORE_DIR, f"{download_id}.pfx")
 
-        subprocess.run(
-            [
-                "openssl", "pkcs12", "-export",
-                "-out", pfx_path,
-                "-inkey", key_path,
-                "-in", crt_path,
-                "-certfile", CHAIN_FILE,
-                "-passout", f"pass:{pfx_pass}"
-            ],
-            check=True, capture_output=True, text=True
-        )
+        try:
+            subprocess.run(
+                [
+                    "openssl", "pkcs12", "-export",
+                    "-out", pfx_path,
+                    "-inkey", key_path,
+                    "-in", crt_path,
+                    "-certfile", CHAIN_FILE,
+                    "-passout", f"pass:{pfx_pass}"
+                ],
+                check=True, capture_output=True, text=True
+            )
+        except subprocess.CalledProcessError as e:
+            raise HTTPException(500, f"Erro no OpenSSL (pkcs12): {e.stderr or e.stdout or str(e)}")
 
         return pfx_path
+
 
 
 
@@ -201,6 +221,7 @@ def download(download_id: str, background_tasks: BackgroundTasks):
         media_type="application/x-pkcs12",
         filename="certificado.pfx"
     )
+
 
 
 
