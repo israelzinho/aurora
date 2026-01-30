@@ -2,20 +2,16 @@
 default_ca = CA_default
 
 [ CA_default ]
-# Diretório base da CA (relativo ao projeto)
-dir               = ./ca
+dir               = ./CA
 
-certs             = $dir/certs
-crl_dir           = $dir/crl
 database          = $dir/index.txt
 new_certs_dir     = $dir/newcerts
 serial            = $dir/serial
 crlnumber         = $dir/crlnumber
 
-# ⚠️ IMPORTANTE:
-# Certificado e chave da AC INTERMEDIÁRIA (quem assina o cliente)
-certificate       = $dir/certs/Aurora-INT.crt
-private_key       = $dir/private/Aurora-INT.key
+certificate       = $dir/intermediate/certs/aurora-int.crt
+private_key       = $dir/intermediate/private/aurora-int.key
+
 
 default_md        = sha512
 policy            = policy_loose
@@ -59,4 +55,5 @@ authorityKeyIdentifier = keyid,issuer
 
 # (opcional – só mantenha se esses endpoints existirem)
 # authorityInfoAccess    = OCSP;URI:http://ocsp.ac-teste.local
+
 # crlDistributionPoints  = URI:http://crl.ac-teste.local/ca.crl
