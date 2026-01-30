@@ -135,17 +135,28 @@ def _generate_pfx(payload: CertRequest) -> str:
         except subprocess.CalledProcessError as e:
             raise HTTPException(500, f"Erro no OpenSSL (req): {e.stderr or e.stdout or str(e)}")
 
-        # 3) assina com CA intermediária — PROTEGER COM LOCK
-        # ✅ IMPORTANTE: cwd=BASE_DIR para que o "./CA/..." do openssl_api.cnf resolva para /app/CA/...
+              # 3) assina com CA intermediária — PROTEGER COM LOCK
+        ca_pass = os.getenv("AURORA_INT_KEY_PASS", "")
+        if not ca_pass:
+            raise HTTPException(500, "AURORA_INT_KEY_PASS não configurada no Railway.")
+        
         with CA_LOCK:
             try:
                 subprocess.run(
-                    ["openssl", "ca", "-config", OPENSSL_CNF, "-in", csr_path, "-out", crt_path, "-batch"],
+                    [
+                        "openssl", "ca",
+                        "-config", OPENSSL_CNF,
+                        "-in", csr_path,
+                        "-out", crt_path,
+                        "-batch",
+                        "-passin", f"pass:{ca_pass}"
+                    ],
                     check=True, capture_output=True, text=True,
                     cwd=BASE_DIR
                 )
             except subprocess.CalledProcessError as e:
                 raise HTTPException(500, f"Erro no OpenSSL (ca): {e.stderr or e.stdout or str(e)}")
+
 
         # 4) exporta pfx (fora do tmp, pra persistir)
         os.makedirs(PFX_STORE_DIR, exist_ok=True)
@@ -221,6 +232,7 @@ def download(download_id: str, background_tasks: BackgroundTasks):
         media_type="application/x-pkcs12",
         filename="certificado.pfx"
     )
+
 
 
 
